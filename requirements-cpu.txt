@@ -1,0 +1,8 @@
+# These should always default to '<dependency>=<latest version>+cpu' builds
+realesrgan
+basicsr
+Pillow
+numpy
+torch
+torchvision
+torchaudio

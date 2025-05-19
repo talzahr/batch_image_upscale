@@ -1,0 +1,12 @@
+# These requirements are for CUDA-capable GPUs. 
+# It will download deps built with CUDA v11.8.
+# Change the CUDA version if desired. i.e. cu121, cu124, cu126, cu128, etc.
+# You can visit the URL below to see what builds are available for torch, torchvision and torchaudio
+--extra-index-url https://download.pytorch.org/whl/cu118
+realesrgan
+basicsr
+Pillow
+numpy
+torch
+torchvision
+torchaudio
