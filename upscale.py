@@ -2,32 +2,27 @@ import os
 import shutil
 import argparse
 from pathlib import Path
-from PIL import Image
+from PIL import Image # Ensure Pillow (or Pillow-SIMD) is installed
 import numpy as np
 import torch
+# Assuming imports from realesrgan and basicsr are correct after basicsr-fixed
 from realesrgan import RealESRGANer
-from basicsr.archs.rrdbnet_arch import RRDBNet # Required by RealESRGANer
+from basicsr.archs.rrdbnet_arch import RRDBNet
 
-# Configuration
+# --- Configuration ---
 MODEL_PHOTO_URL = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth'
 MODEL_ANIME_URL = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth'
 
-MODEL_PHOTO_NAME = 'RealESRGAN_x4plus'
-MODEL_ANIME_NAME = 'RealESRGAN_x4plus_anime_6B'
-
-MODEL_PHOTO_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus' # Used for filename suffix
-MODEL_ANIME_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus_anime_6B' # Used for filename suffix
+MODEL_PHOTO_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus'
+MODEL_ANIME_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus_anime_6B'
 SUFFIX_PHOTO = f'-{MODEL_PHOTO_NAME_FOR_SUFFIX}'
 SUFFIX_ANIME = f'-{MODEL_ANIME_NAME_FOR_SUFFIX}'
 
-# Scale
-UPSCALE_FACTOR = 4
+MODEL_NATIVE_SCALE = 4
 
-# Supported image extensions
 SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
 
-# Add num_block to the function signature
-def create_upsampler(model_url, model_name_for_log_and_device, scale_factor, num_blocks):
+def create_upsampler(model_url, model_name_for_log_and_device, model_inherent_scale, num_blocks):
     """Initializes and returns a RealESRGANer instance."""
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -38,20 +33,19 @@ def create_upsampler(model_url, model_name_for_log_and_device, scale_factor, num
         half_precision = False
         print(f"Warning: Using CPU for {model_name_for_log_and_device}, this will be very slow.")
 
-    # Use the passed num_blocks parameter here
     model_arch = RRDBNet(
-        num_in_ch=3, num_out_ch=3, num_feat=64, 
-        num_block=num_blocks,  # Use the parameter
-        num_grow_ch=32, scale=scale_factor
+        num_in_ch=3, num_out_ch=3, num_feat=64,
+        num_block=num_blocks,
+        num_grow_ch=32, scale=model_inherent_scale
     )
 
-    print(f"Attempting to initialize RealESRGANer with model_url: '{model_url}' (num_blocks: {num_blocks})")
+    print(f"Attempting to initialize RealESRGANer with model_url: '{model_url}' (num_blocks: {num_blocks}, model_scale: {model_inherent_scale})")
     try:
         upsampler = RealESRGANer(
-            scale=scale_factor,
+            scale=model_inherent_scale,
             model_path=model_url,
             dni_weight=None,
-            model=model_arch, # Pass the correctly configured model_arch
+            model=model_arch,
             tile=0,
             tile_pad=10,
             pre_pad=0,
@@ -65,7 +59,7 @@ def create_upsampler(model_url, model_name_for_log_and_device, scale_factor, num
         traceback.print_exc()
         raise
 
-def process_images_in_directory(input_dir_path, output_dir_path, upsampler, filename_suffix):
+def process_images_in_directory(input_dir_path, output_dir_path, upsampler, model_native_scale, filename_suffix, target_output_scale_factor):
     """Processes all images in a given directory."""
     processed_files = []
     if not input_dir_path.exists() or not input_dir_path.is_dir():
@@ -74,7 +68,7 @@ def process_images_in_directory(input_dir_path, output_dir_path, upsampler, file
 
     output_dir_path.mkdir(parents=True, exist_ok=True)
     print(f"\nProcessing images in: {input_dir_path}")
-    print(f"Outputting to: {output_dir_path}")
+    print(f"Outputting to: {output_dir_path} with target upscale x{target_output_scale_factor} (AI at x{model_native_scale})")
 
     image_files = [f for f in input_dir_path.iterdir() if f.suffix.lower() in SUPPORTED_EXTENSIONS]
 
@@ -85,46 +79,69 @@ def process_images_in_directory(input_dir_path, output_dir_path, upsampler, file
     for img_path in image_files:
         print(f"  Processing: {img_path.name}...")
         try:
-            img = Image.open(img_path).convert("RGB")
-            img_np = np.array(img)
+            img_pil = Image.open(img_path).convert("RGB")
+            img_np = np.array(img_pil)
 
-            output_img_np, _ = upsampler.enhance(img_np, outscale=UPSCALE_FACTOR)
+            # Step 1: Always AI upscale to the model's native scale (e.g., 4x)
+            # The 'outscale' here should be the model's native scale
+            ai_upscaled_img_np, _ = upsampler.enhance(img_np, outscale=model_native_scale)
+            ai_upscaled_img_pil = Image.fromarray(ai_upscaled_img_np)
 
-            output_img = Image.fromarray(output_img_np)
-            
+            # Step 2: If target_output_scale_factor is different from model_native_scale,
+            #         manually resize using Pillow with Lanczos.
+            final_img_pil = ai_upscaled_img_pil
+            if target_output_scale_factor != model_native_scale:
+                original_width, original_height = img_pil.size
+                target_width = int(original_width * target_output_scale_factor)
+                target_height = int(original_height * target_output_scale_factor)
+                
+                print(f"    Resizing from AI x{model_native_scale} ({ai_upscaled_img_pil.width}x{ai_upscaled_img_pil.height}) to target x{target_output_scale_factor} ({target_width}x{target_height}) using Lanczos...")
+                final_img_pil = ai_upscaled_img_pil.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
             base_name = img_path.stem
-            extension = img_path.suffix # Keep original extension, or force .png
-            # Forcing PNG for consistent output quality, but can keep original:
-            # output_filename = f"{base_name}{filename_suffix}{extension}"
-            output_filename = f"{base_name}{filename_suffix}.png" # Force PNG
+            if target_output_scale_factor == int(target_output_scale_factor):
+                scale_str = f"{int(target_output_scale_factor)}x"
+            else:
+                scale_str = f"{target_output_scale_factor:.1f}x".replace(".0x","x")
 
+            output_filename = f"{base_name}{filename_suffix}-out{scale_str}.png"
             output_save_path = output_dir_path / output_filename
-            output_img.save(output_save_path)
+            final_img_pil.save(output_save_path, quality=95) # Adjust quality for PNG if needed (lossless by default)
             print(f"  Saved: {output_save_path}")
             processed_files.append(img_path)
         except Exception as e:
             print(f"  Error processing {img_path.name}: {e}")
+            import traceback
+            traceback.print_exc()
     
     return processed_files
 
-
 def main():
-    parser = argparse.ArgumentParser(description="Upscale images using Real-ESRGAN.")
+    parser = argparse.ArgumentParser(description="Upscale images using Real-ESRGAN and Pillow-Lanczos for final scaling.")
     parser.add_argument(
         "-o", "--output-path",
         type=str,
         default=None,
-        help="Base path for output directories. If not set, 'output_photo' and 'output_anime' will be created in the script's directory."
+        help="Base path for output directories."
+    )
+    parser.add_argument(
+        "-u", "--upscale",
+        type=float,
+        default=4.0,
+        help=f"Target upscale factor for the output image (e.g., 2.0 for 2x). AI upscale is always x{MODEL_NATIVE_SCALE}. Default: 4.0"
     )
     args = parser.parse_args()
 
-    script_dir = Path(__file__).resolve().parent
+    if args.upscale <= 0:
+        print("Error: Upscale factor must be positive.")
+        return
+    
+    target_output_scale = args.upscale
 
-    # Define input directories relative to the script
+    script_dir = Path(__file__).resolve().parent
     input_photo_dir = script_dir / "input_photo"
     input_anime_dir = script_dir / "input_anime"
 
-    # Define output directories
     if args.output_path:
         output_base_dir = Path(args.output_path).resolve()
         output_photo_dir = output_base_dir / "output_photo"
@@ -133,64 +150,55 @@ def main():
         output_photo_dir = script_dir / "output_photo"
         output_anime_dir = script_dir / "output_anime"
 
-    # Create base output directories if they don't exist
     output_photo_dir.parent.mkdir(parents=True, exist_ok=True)
     output_anime_dir.parent.mkdir(parents=True, exist_ok=True)
 
-
     print("Initializing upscalers...")
     try:
-        # Standard photo model uses num_block=23
-        photo_upsampler = create_upsampler(MODEL_PHOTO_URL, MODEL_PHOTO_NAME_FOR_SUFFIX, UPSCALE_FACTOR, num_blocks=23)
-        
-        # Anime_6B model uses num_block=6
-        anime_upsampler = create_upsampler(MODEL_ANIME_URL, MODEL_ANIME_NAME_FOR_SUFFIX, UPSCALE_FACTOR, num_blocks=6)
-    
+        photo_upsampler = create_upsampler(MODEL_PHOTO_URL, MODEL_PHOTO_NAME_FOR_SUFFIX, MODEL_NATIVE_SCALE, num_blocks=23)
+        anime_upsampler = create_upsampler(MODEL_ANIME_URL, MODEL_ANIME_NAME_FOR_SUFFIX, MODEL_NATIVE_SCALE, num_blocks=6)
     except Exception as e:
-        # This general exception catch might be the one you saw first:
-        # "Error initializing upscalers: create_upsampler() missing 1 required positional argument: 'scale_factor'"
-        # This was likely because the anime_upsampler failed, and the error propagated up.
-        # We should make this more specific if needed, or just let the create_upsampler re-raise.
-        print(f"Error initializing upscalers: {e}")
-        print("Please ensure Real-ESRGAN is installed correctly and model files are accessible.")
-        print("You might need to run the script once to allow models to download, or place them in a 'weights' folder.")
-        return # Exit if upscalers can't be initialized
+        print(f"Fatal error initializing upscalers: {e}")
+        return
 
     all_processed_input_files = []
 
-    # Process Photo images
     if input_photo_dir.exists():
-        processed_photo_files = process_images_in_directory(input_photo_dir, output_photo_dir, photo_upsampler, SUFFIX_PHOTO)
+        # Pass MODEL_NATIVE_SCALE to process_images_in_directory
+        processed_photo_files = process_images_in_directory(
+            input_photo_dir, output_photo_dir, photo_upsampler, 
+            MODEL_NATIVE_SCALE, SUFFIX_PHOTO, target_output_scale
+        )
         all_processed_input_files.extend(processed_photo_files)
     else:
         print(f"Input photo directory not found: {input_photo_dir}")
 
-    # Process Anime images
     if input_anime_dir.exists():
-        processed_anime_files = process_images_in_directory(input_anime_dir, output_anime_dir, anime_upsampler, SUFFIX_ANIME)
+        processed_anime_files = process_images_in_directory(
+            input_anime_dir, output_anime_dir, anime_upsampler, 
+            MODEL_NATIVE_SCALE, SUFFIX_ANIME, target_output_scale
+        )
         all_processed_input_files.extend(processed_anime_files)
     else:
         print(f"Input anime directory not found: {input_anime_dir}")
 
     print("\nUpscaling complete.")
 
-    # Ask to retain input images
+    # ... (rest of input deletion logic remains the same) ...
     if all_processed_input_files:
         while True:
             choice = input("Would you like to retain the images in INPUT DIRs? [Y/n]: ").strip().lower()
-            if choice == 'y' or choice == '': # Default to Yes if empty
+            if choice == 'y' or choice == '':
                 print("Retaining input images.")
                 break
             elif choice == 'n':
                 print("Deleting processed input images...")
                 for file_path in all_processed_input_files:
                     try:
-                        file_path.unlink() # Deletes the file
+                        file_path.unlink()
                         print(f"  Deleted: {file_path}")
                     except Exception as e:
                         print(f"  Error deleting {file_path}: {e}")
-                # You could also delete the input directories if they are now empty
-                # For example, if not os.listdir(input_photo_dir): shutil.rmtree(input_photo_dir)
                 print("Input images deleted.")
                 break
             else:
@@ -199,10 +207,4 @@ def main():
         print("No images were processed, so no input files to potentially delete.")
 
 if __name__ == "__main__":
-    # Ensure model weights directory exists if realesrgan expects it for downloads
-    # This is often handled internally by realesrgan if it downloads,
-    # but creating it doesn't hurt if you plan to manually place models.
-    weights_dir = Path(__file__).resolve().parent / "weights"
-    weights_dir.mkdir(exist_ok=True)
-    
     main()

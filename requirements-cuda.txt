@@ -1,12 +1,18 @@
-# These requirements are for CUDA-capable GPUs. 
-# It will download deps built with CUDA v11.8.
-# Change the CUDA version if desired. i.e. cu121, cu124, cu126, cu128, etc.
-# You can visit the URL below to see what builds are available for torch, torchvision and torchaudio
---extra-index-url https://download.pytorch.org/whl/cu118
-realesrgan
-basicsr
-Pillow
-numpy
-torch
-torchvision
-torchaudio
+--extra-index-url https://download.pytorch.org/whl/cu121
+
+torch>=2.3.0,<2.4.0
+torchvision>=0.18.0,<0.19.0
+torchaudio>=2.3.0,<2.4.0
+
+numpy>=1.26.0,<2.0
+
+realesrgan>=0.3.0
+
+# This is a temp package to solve 'torchvision.transforms.functional_tensor' unloadable module
+# Can also be fixed by changing call in basicsr's degradations.py:
+# 'torchvision.transforms.functional import rgb_to_grayscale'
+# https://github.com/XPixelGroup/BasicSR/pull/650
+basicsr-fixed>=1.4.2
+
+Pillow>=9.1.0 # For Image.Resampling
+
