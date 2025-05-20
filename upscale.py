@@ -20,7 +20,7 @@ SUFFIX_ANIME = f'-{MODEL_ANIME_NAME_FOR_SUFFIX}'
 
 MODEL_NATIVE_SCALE = 4
 
-SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
+SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif'] # not setup for animated GIFs
 
 def create_upsampler(model_url, model_name_for_log_and_device, model_inherent_scale, num_blocks):
     """Initializes and returns a RealESRGANer instance."""

@@ -9,7 +9,7 @@ env/
 build/
 dist/
 venv.bat
-venv # shell script for virtual env toggle
+venv # shell scripts for virtual env toggle
 venv.sh
 
 # IDE / Editor specific
@@ -23,11 +23,13 @@ venv.sh
 Thumbs.db
 
 # Media input/output files/dirs
-input_photo/*
-input_anime/*
-output_photo/*
-output_anime/*
 
 # Other project files
 patch.diff
 *.log
+*.gif
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.bmp
