@@ -184,27 +184,26 @@ def main():
 
     print("\nUpscaling complete.")
 
-    # ... (rest of input deletion logic remains the same) ...
-    if all_processed_input_files:
-        while True:
-            choice = input("Would you like to retain the images in INPUT DIRs? [Y/n]: ").strip().lower()
-            if choice == 'y' or choice == '':
-                print("Retaining input images.")
-                break
-            elif choice == 'n':
-                print("Deleting processed input images...")
-                for file_path in all_processed_input_files:
-                    try:
-                        file_path.unlink()
-                        print(f"  Deleted: {file_path}")
-                    except Exception as e:
-                        print(f"  Error deleting {file_path}: {e}")
-                print("Input images deleted.")
-                break
-            else:
-                print("Invalid choice. Please enter 'Y' or 'n'.")
-    else:
-        print("No images were processed, so no input files to potentially delete.")
+    # if all_processed_input_files:
+        # while True:
+            # choice = input("Would you like to retain the images in INPUT DIRs? [Y/n]: ").strip().lower()
+            # if choice == 'y' or choice == '':
+                # print("Retaining input images.")
+                # break
+            # elif choice == 'n':
+                # print("Deleting processed input images...")
+                # for file_path in all_processed_input_files:
+                    # try:
+                        # file_path.unlink()
+                        # print(f"  Deleted: {file_path}")
+                    # except Exception as e:
+                        # print(f"  Error deleting {file_path}: {e}")
+                # print("Input images deleted.")
+                # break
+            # else:
+                # print("Invalid choice. Please enter 'Y' or 'n'.")
+    # else:
+        # print("No images were processed, so no input files to potentially delete.")
 
 if __name__ == "__main__":
     main()
