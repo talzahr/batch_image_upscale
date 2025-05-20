@@ -1,6 +1,6 @@
 # Batch Image Upscale
 
-##(CLI: upscale.py)
+## CLI: upscale.py
 
 Just something I made for myself for fun and upscale some old images.
 
@@ -41,4 +41,4 @@ At the moment this does not utilize the [NCNN-Vulkan implementation of Real-ESRG
 
 1. *Bending feature*: take original image and upsample it with bicubic/Lanczos and blend it into upscaled image for a more realistic look.
 2. *Bring in realesr-general-x4v3 model*: May work better with photos.
-~~3. *GUI*?: Why not. ~~
+3. *GUI*?: Why not. (COMPLETED REV. 1)
