@@ -23,3 +23,9 @@ Uses Real-ESRGAN w/ x4plus and x4plus_anime_6B models to AI upscale images from 
 ## NCNN Vulkan not yet supported
 
 At the moment this does not utilize the [NCNN-Vulkan implementation of Real-ESRGAN](https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan) but should be fairly easy to implement.
+
+# To Do
+
+1. *Bending feature*: take original image and upsample it with bicubic/Lanczos and blend it into upscaled image for a more realistic look.
+2. *Bring in realesr-general-x4v3 model*: May work better with photos.
+3. *GUI*?: Why not. 
