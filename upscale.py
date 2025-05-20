@@ -22,9 +22,8 @@ UPSCALE_FACTOR = 4
 # Supported image extensions
 SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
 
-def create_upsampler(model_name, scale_factor):
+def create_upsampler(model_name, scale_factor): # model_name is 'RealESRGAN_x4plus' etc.
     """Initializes and returns a RealESRGANer instance."""
-    # Determine if GPU is available
     if torch.cuda.is_available():
         device = torch.device('cuda')
         half_precision = True
@@ -34,26 +33,35 @@ def create_upsampler(model_name, scale_factor):
         half_precision = False
         print(f"Warning: Using CPU for {model_name}, this will be very slow.")
 
-    # Architecture for common x4plus models (check if specific models need different params)
     # For most RealESRGAN_x4plus models, num_block=23 is standard.
     model_arch = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=scale_factor)
 
-    # The RealESRGANer will download model weights if model_path is a standard name
-    # and not found locally in a 'weights' folder.
-    # Or you can provide an absolute path to a .pth file.
-    upsampler = RealESRGANer(
-        scale=scale_factor,
-        model_path=model_name, # Let realesrgan handle download if not found.
-                               # It looks for f'weights/{model_name}.pth' or downloads.
-        dni_weight=None,
-        model=model_arch,
-        tile=0,  # Tile size, 0 for no tiling. Adjust if OOM on GPU.
-        tile_pad=10,
-        pre_pad=0,
-        half=half_precision,
-        # gpu_id=0 # Specify if you have multiple GPUs and want to choose one
-    )
-    return upsampler
+    print(f"Attempting to initialize RealESRGANer with model_name: '{model_name}'")
+    # The RealESRGANer should download model weights if model_path is a standard name
+    # and not found locally. It looks for f'weights/{model_name}.pth' or downloads.
+    try:
+        upsampler = RealESRGANer(
+            scale=scale_factor,
+            model_path=model_name, # Pass the name, e.g., 'RealESRGAN_x4plus'
+            dni_weight=None,
+            model=model_arch,
+            tile=0,
+            tile_pad=10,
+            pre_pad=0,
+            half=half_precision,
+        )
+        print(f"RealESRGANer initialized successfully for {model_name}.")
+        return upsampler
+    except FileNotFoundError as e:
+        print(f"FileNotFoundError during RealESRGANer init for {model_name}: {e}")
+        print("This suggests it tried to open the model_name as a direct path and failed, AND auto-download also failed or wasn't triggered as expected.")
+        raise
+    except Exception as e:
+        print(f"Unexpected error during RealESRGANer init for {model_name}: {type(e).__name__} - {e}")
+        # You might want to print the full traceback here for more details if it's not FileNotFoundError
+        # import traceback
+        # traceback.print_exc()
+        raise
 
 def process_images_in_directory(input_dir_path, output_dir_path, upsampler, filename_suffix):
     """Processes all images in a given directory."""
@@ -184,7 +192,7 @@ if __name__ == "__main__":
     # Ensure model weights directory exists if realesrgan expects it for downloads
     # This is often handled internally by realesrgan if it downloads,
     # but creating it doesn't hurt if you plan to manually place models.
-    weights_dir = Path(__file__).resolve().parent / "weights"
-    weights_dir.mkdir(exist_ok=True)
+    # weights_dir = Path(__file__).resolve().parent / "weights"
+    # weights_dir.mkdir(exist_ok=True)
     
     main()
