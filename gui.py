@@ -151,23 +151,23 @@ class App(TkinterDnD.Tk):
             img.thumbnail(THUMBNAIL_SIZE)
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(img.width, img.height))
             
-            self.thumbnail_image_refs[display_key] = ctk_img
+            self.thumbnail_image_refs[display_key] = ctk_img # display_key is "OUT-" + filename for output
 
             thumb_frame = ctk.CTkFrame(parent_frame) 
             thumb_frame.pack(pady=2, padx=2, fill="x")
 
-            # THIS IS OUR MAIN CTKLABEL INSTANCE
-            # Let's call it ctk_label_widget to be super clear
             ctk_label_widget = ctk.CTkLabel(thumb_frame, image=ctk_img, text=os.path.basename(file_path), compound="top")
             ctk_label_widget.pack(side="left", pady=2, padx=2, expand=True, fill="both") 
             
-            # Store attributes on our ctk_label_widget instance
-            ctk_label_widget.original_path = file_path
-            ctk_label_widget.display_key = display_key
-            ctk_label_widget.parent_frame_ref = parent_frame
+            ctk_label_widget.original_path = file_path # Used by both double-click and context menu
+            ctk_label_widget.display_key = display_key # Store display_key for potential future use
+            # For output thumbs, parent_frame_ref and thumb_widget_frame_ref are less critical
+            # unless we implement a "remove from display" type feature for output.
+            ctk_label_widget.parent_frame_ref = parent_frame 
             ctk_label_widget.thumb_widget_frame_ref = thumb_frame
 
-            # Pass ctk_label_widget to the event handlers using lambda
+
+            # Always bind double-click to the label
             ctk_label_widget.bind("<Double-1>", lambda event, lbl=ctk_label_widget: self.open_image_event(event, custom_widget=lbl))
 
             if is_input_thumb:
@@ -175,41 +175,25 @@ class App(TkinterDnD.Tk):
                                             command=lambda k=display_key, pf=parent_frame, tf=thumb_frame: self.remove_input_item(k, pf, tf))
                 remove_button.pack(side="right", padx=2, pady=2, anchor="ne")
                 
-                # Pass ctk_label_widget to the event handlers using lambda
                 ctk_label_widget.bind("<Button-3>", lambda event, lbl=ctk_label_widget: self.show_input_context_menu(event, custom_widget=lbl))
+            else: # This is an output thumbnail
+                ctk_label_widget.bind("<Button-3>", lambda event, lbl=ctk_label_widget: self.show_output_context_menu(event, custom_widget=lbl))
             
         except FileNotFoundError:
+            # ... (error handling as before) ...
             self.update_status(f"Thumbnail Error: File not found at {file_path}")
-            # Optionally display a placeholder or just log
-            thumb_frame = ctk.CTkFrame(parent_frame) # Still create a frame for error
+            thumb_frame = ctk.CTkFrame(parent_frame) 
             thumb_frame.pack(pady=2, padx=2, fill="x")
             error_display_label = ctk.CTkLabel(thumb_frame, text=f"Not Found: {os.path.basename(file_path)}", text_color="red")
             error_display_label.pack(side="left", pady=2, padx=2, expand=True, fill="both")
-            # Store data on error label too if needed for removal by X button
-            error_display_label.display_key = display_key
-            error_display_label.parent_frame_ref = parent_frame
-            error_display_label.thumb_widget_frame_ref = thumb_frame
-            if is_input_thumb:
-                remove_button = ctk.CTkButton(thumb_frame, text="X", width=20, height=20,
-                                              command=lambda k=display_key, pf=parent_frame, tf=thumb_frame: self.remove_input_item(k, pf, tf))
-                remove_button.pack(side="right", padx=2, pady=2, anchor="ne")
-
+            # No interactive elements for error display in output for now
         except Exception as e:
+            # ... (error handling as before) ...
             self.update_status(f"Error loading thumbnail for {file_path}: {e}")
-            # Fallback display (if you want one for errors)
             thumb_frame = ctk.CTkFrame(parent_frame)
             thumb_frame.pack(pady=2, padx=2, fill="x")
             error_display_label = ctk.CTkLabel(thumb_frame, text=f"Error: {os.path.basename(file_path)}", text_color="red")
             error_display_label.pack(side="left", pady=2, padx=2, expand=True, fill="both")
-            # Store data on error label too if needed for removal by X button
-            error_display_label.display_key = display_key
-            error_display_label.parent_frame_ref = parent_frame
-            error_display_label.thumb_widget_frame_ref = thumb_frame
-
-            if is_input_thumb:
-                remove_button = ctk.CTkButton(thumb_frame, text="X", width=20, height=20,
-                                              command=lambda k=display_key, pf=parent_frame, tf=thumb_frame: self.remove_input_item(k, pf, tf))
-                remove_button.pack(side="right", padx=2, pady=2, anchor="ne")
 
     def open_image_event(self, event, custom_widget=None): # Added custom_widget
         # event.widget might be an internal part, custom_widget is our actual CTkLabel
@@ -273,6 +257,34 @@ class App(TkinterDnD.Tk):
             context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             context_menu.grab_release()
+            
+    def show_output_context_menu(self, event, custom_widget=None):
+        target_widget = custom_widget if custom_widget else event.widget
+        print(f"DEBUG: show_output_context_menu CALLED. event.widget: {event.widget}, custom_widget: {target_widget}")
+        
+        if not hasattr(target_widget, 'original_path'): # 'original_path' is the key for output items
+            print(f"DEBUG: show_output_context_menu - target_widget missing original_path: {target_widget}")
+            return
+
+        original_path = target_widget.original_path # This is the path to the output file
+
+        context_menu = Menu(self, tearoff=0)
+        context_menu.add_command(label="Open Image", 
+                                 command=lambda p=original_path: self.open_image_with_default_viewer(p))
+        
+        # Optionally, add "Open Output Directory"
+        output_dir = os.path.dirname(original_path)
+        context_menu.add_command(label="Open Output Directory",
+                                 command=lambda d=output_dir: self.open_image_with_default_viewer(d)) # Re-use viewer for dirs
+
+        # Optionally, add "Delete from Disk" for output files too
+        # For this, we'd need a display_key and reference to the thumb_widget_frame if we want UI removal
+        # For now, let's keep it simple. If delete is needed, it would mirror input's delete logic.
+        
+        try:
+            context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            context_menu.grab_release()            
 
     def remove_input_item(self, display_key, parent_frame, thumb_widget_frame, from_disk_deletion=False):
         item_removed = False
