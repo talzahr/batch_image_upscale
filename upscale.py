@@ -8,13 +8,17 @@ import torch
 from realesrgan import RealESRGANer
 from basicsr.archs.rrdbnet_arch import RRDBNet # Required by RealESRGANer
 
-# --- Configuration ---
-MODEL_PHOTO_NAME = 'RealESRGAN_x4plus'
-MODEL_ANIME_NAME = 'RealESRGAN_x4plus_anime_6B' # Corrected model name
+# Configuration
+MODEL_PHOTO_URL = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth'
+MODEL_ANIME_URL = 'https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth'
 
-# Suffixes for output filenames
-SUFFIX_PHOTO = '-rESRGAN-x4plus'
-SUFFIX_ANIME = '-rESRGAN-Anime6B'
+MODEL_PHOTO_NAME = 'RealESRGAN_x4plus'
+MODEL_ANIME_NAME = 'RealESRGAN_x4plus_anime_6B'
+
+MODEL_PHOTO_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus' # Used for filename suffix
+MODEL_ANIME_NAME_FOR_SUFFIX = 'RealESRGAN_x4plus_anime_6B' # Used for filename suffix
+SUFFIX_PHOTO = f'-{MODEL_PHOTO_NAME_FOR_SUFFIX}'
+SUFFIX_ANIME = f'-{MODEL_ANIME_NAME_FOR_SUFFIX}'
 
 # Scale
 UPSCALE_FACTOR = 4
@@ -22,45 +26,43 @@ UPSCALE_FACTOR = 4
 # Supported image extensions
 SUPPORTED_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif']
 
-def create_upsampler(model_name, scale_factor): # model_name is 'RealESRGAN_x4plus' etc.
+# Add num_block to the function signature
+def create_upsampler(model_url, model_name_for_log_and_device, scale_factor, num_blocks):
     """Initializes and returns a RealESRGANer instance."""
     if torch.cuda.is_available():
         device = torch.device('cuda')
         half_precision = True
-        print(f"Using GPU for {model_name}.")
+        print(f"Using GPU for {model_name_for_log_and_device}.")
     else:
         device = torch.device('cpu')
         half_precision = False
-        print(f"Warning: Using CPU for {model_name}, this will be very slow.")
+        print(f"Warning: Using CPU for {model_name_for_log_and_device}, this will be very slow.")
 
-    # For most RealESRGAN_x4plus models, num_block=23 is standard.
-    model_arch = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=scale_factor)
+    # Use the passed num_blocks parameter here
+    model_arch = RRDBNet(
+        num_in_ch=3, num_out_ch=3, num_feat=64, 
+        num_block=num_blocks,  # Use the parameter
+        num_grow_ch=32, scale=scale_factor
+    )
 
-    print(f"Attempting to initialize RealESRGANer with model_name: '{model_name}'")
-    # The RealESRGANer should download model weights if model_path is a standard name
-    # and not found locally. It looks for f'weights/{model_name}.pth' or downloads.
+    print(f"Attempting to initialize RealESRGANer with model_url: '{model_url}' (num_blocks: {num_blocks})")
     try:
         upsampler = RealESRGANer(
             scale=scale_factor,
-            model_path=model_name, # Pass the name, e.g., 'RealESRGAN_x4plus'
+            model_path=model_url,
             dni_weight=None,
-            model=model_arch,
+            model=model_arch, # Pass the correctly configured model_arch
             tile=0,
             tile_pad=10,
             pre_pad=0,
             half=half_precision,
         )
-        print(f"RealESRGANer initialized successfully for {model_name}.")
+        print(f"RealESRGANer initialized successfully for {model_name_for_log_and_device}.")
         return upsampler
-    except FileNotFoundError as e:
-        print(f"FileNotFoundError during RealESRGANer init for {model_name}: {e}")
-        print("This suggests it tried to open the model_name as a direct path and failed, AND auto-download also failed or wasn't triggered as expected.")
-        raise
     except Exception as e:
-        print(f"Unexpected error during RealESRGANer init for {model_name}: {type(e).__name__} - {e}")
-        # You might want to print the full traceback here for more details if it's not FileNotFoundError
-        # import traceback
-        # traceback.print_exc()
+        print(f"Unexpected error during RealESRGANer init for {model_name_for_log_and_device} using URL {model_url}: {type(e).__name__} - {e}")
+        import traceback
+        traceback.print_exc()
         raise
 
 def process_images_in_directory(input_dir_path, output_dir_path, upsampler, filename_suffix):
@@ -138,13 +140,21 @@ def main():
 
     print("Initializing upscalers...")
     try:
-        photo_upsampler = create_upsampler(MODEL_PHOTO_NAME, UPSCALE_FACTOR)
-        anime_upsampler = create_upsampler(MODEL_ANIME_NAME, UPSCALE_FACTOR)
+        # Standard photo model uses num_block=23
+        photo_upsampler = create_upsampler(MODEL_PHOTO_URL, MODEL_PHOTO_NAME_FOR_SUFFIX, UPSCALE_FACTOR, num_blocks=23)
+        
+        # Anime_6B model uses num_block=6
+        anime_upsampler = create_upsampler(MODEL_ANIME_URL, MODEL_ANIME_NAME_FOR_SUFFIX, UPSCALE_FACTOR, num_blocks=6)
+    
     except Exception as e:
+        # This general exception catch might be the one you saw first:
+        # "Error initializing upscalers: create_upsampler() missing 1 required positional argument: 'scale_factor'"
+        # This was likely because the anime_upsampler failed, and the error propagated up.
+        # We should make this more specific if needed, or just let the create_upsampler re-raise.
         print(f"Error initializing upscalers: {e}")
         print("Please ensure Real-ESRGAN is installed correctly and model files are accessible.")
         print("You might need to run the script once to allow models to download, or place them in a 'weights' folder.")
-        return
+        return # Exit if upscalers can't be initialized
 
     all_processed_input_files = []
 
@@ -192,7 +202,7 @@ if __name__ == "__main__":
     # Ensure model weights directory exists if realesrgan expects it for downloads
     # This is often handled internally by realesrgan if it downloads,
     # but creating it doesn't hurt if you plan to manually place models.
-    # weights_dir = Path(__file__).resolve().parent / "weights"
-    # weights_dir.mkdir(exist_ok=True)
+    weights_dir = Path(__file__).resolve().parent / "weights"
+    weights_dir.mkdir(exist_ok=True)
     
     main()
