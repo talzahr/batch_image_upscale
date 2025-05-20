@@ -16,3 +16,6 @@ basicsr-fixed>=1.4.2
 
 Pillow>=9.1.0 # For Image.Resampling
 
+# GUI stuff (only if you want to run gui.py)
+customtkinter
+tkinterdnd2-universal # Drag and drop file support
