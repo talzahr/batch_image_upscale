@@ -151,49 +151,63 @@ class App(TkinterDnD.Tk):
             img.thumbnail(THUMBNAIL_SIZE)
             ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(img.width, img.height))
             
-            self.thumbnail_image_refs[display_key] = ctk_img # display_key is "OUT-" + filename for output
+            self.thumbnail_image_refs[display_key] = ctk_img
 
             thumb_frame = ctk.CTkFrame(parent_frame) 
-            thumb_frame.pack(pady=2, padx=2, fill="x")
+            thumb_frame.pack(pady=2, padx=2, fill="x") 
 
             ctk_label_widget = ctk.CTkLabel(thumb_frame, image=ctk_img, text=os.path.basename(file_path), compound="top")
+            # Label now takes the full width of the thumb_frame as there's no X button
             ctk_label_widget.pack(side="left", pady=2, padx=2, expand=True, fill="both") 
             
-            ctk_label_widget.original_path = file_path # Used by both double-click and context menu
-            ctk_label_widget.display_key = display_key # Store display_key for potential future use
-            # For output thumbs, parent_frame_ref and thumb_widget_frame_ref are less critical
-            # unless we implement a "remove from display" type feature for output.
+            ctk_label_widget.original_path = file_path
+            ctk_label_widget.display_key = display_key
             ctk_label_widget.parent_frame_ref = parent_frame 
             ctk_label_widget.thumb_widget_frame_ref = thumb_frame
 
-
-            # Always bind double-click to the label
             ctk_label_widget.bind("<Double-1>", lambda event, lbl=ctk_label_widget: self.open_image_event(event, custom_widget=lbl))
 
             if is_input_thumb:
-                remove_button = ctk.CTkButton(thumb_frame, text="X", width=20, height=20,
-                                            command=lambda k=display_key, pf=parent_frame, tf=thumb_frame: self.remove_input_item(k, pf, tf))
-                remove_button.pack(side="right", padx=2, pady=2, anchor="ne")
+                # --- REMOVE X BUTTON CREATION AND PACKING ---
+                # remove_button = ctk.CTkButton(thumb_frame, text="X", width=20, height=20,
+                #                             command=lambda k=display_key, pf=parent_frame, tf=thumb_frame: self.remove_input_item(k, pf, tf))
+                # remove_button.pack(side="right", padx=(0, 2), pady=2) 
+                # --- END OF REMOVAL ---
                 
                 ctk_label_widget.bind("<Button-3>", lambda event, lbl=ctk_label_widget: self.show_input_context_menu(event, custom_widget=lbl))
-            else: # This is an output thumbnail
+            else: 
                 ctk_label_widget.bind("<Button-3>", lambda event, lbl=ctk_label_widget: self.show_output_context_menu(event, custom_widget=lbl))
             
         except FileNotFoundError:
-            # ... (error handling as before) ...
             self.update_status(f"Thumbnail Error: File not found at {file_path}")
             thumb_frame = ctk.CTkFrame(parent_frame) 
             thumb_frame.pack(pady=2, padx=2, fill="x")
             error_display_label = ctk.CTkLabel(thumb_frame, text=f"Not Found: {os.path.basename(file_path)}", text_color="red")
             error_display_label.pack(side="left", pady=2, padx=2, expand=True, fill="both")
-            # No interactive elements for error display in output for now
+            
+            # Store necessary attributes on error label if it might be interactive later
+            error_display_label.display_key = display_key
+            error_display_label.parent_frame_ref = parent_frame
+            error_display_label.thumb_widget_frame_ref = thumb_frame
+            # No X button for error items either now
+            # if is_input_thumb:
+                # Context menu could still be bound to error_display_label if desired
+                # error_display_label.bind("<Button-3>", lambda event, lbl=error_display_label: self.show_input_context_menu(event, custom_widget=lbl))
+
+
         except Exception as e:
-            # ... (error handling as before) ...
             self.update_status(f"Error loading thumbnail for {file_path}: {e}")
             thumb_frame = ctk.CTkFrame(parent_frame)
             thumb_frame.pack(pady=2, padx=2, fill="x")
             error_display_label = ctk.CTkLabel(thumb_frame, text=f"Error: {os.path.basename(file_path)}", text_color="red")
             error_display_label.pack(side="left", pady=2, padx=2, expand=True, fill="both")
+
+            error_display_label.display_key = display_key
+            error_display_label.parent_frame_ref = parent_frame
+            error_display_label.thumb_widget_frame_ref = thumb_frame
+            # No X button for error items either now
+            # if is_input_thumb:
+                # error_display_label.bind("<Button-3>", lambda event, lbl=error_display_label: self.show_input_context_menu(event, custom_widget=lbl))
 
     def open_image_event(self, event, custom_widget=None): # Added custom_widget
         # event.widget might be an internal part, custom_widget is our actual CTkLabel
@@ -230,26 +244,32 @@ class App(TkinterDnD.Tk):
             self.update_status(f"Error opening {file_path}: {e}")
             messagebox.showerror("Error", f"Could not open image:\n{e}")
 
-    def show_input_context_menu(self, event, custom_widget=None): # Added custom_widget
+    def show_input_context_menu(self, event, custom_widget=None):
         target_widget = custom_widget if custom_widget else event.widget
-        print(f"DEBUG: show_input_context_menu. event.widget: {event.widget}, custom_widget: {target_widget}")
+        # print(f"DEBUG: show_input_context_menu CALLED. event.widget: {event.widget}, custom_widget: {target_widget}") 
         
         if not hasattr(target_widget, 'display_key') or not hasattr(target_widget, 'original_path'):
-            print(f"DEBUG: show_input_context_menu - target_widget missing attributes: {target_widget}")
+            # print(f"DEBUG: show_input_context_menu - target_widget missing attributes: {target_widget}")
             return
 
         display_key = target_widget.display_key
         original_path = target_widget.original_path
-        # Ensure these refs are also correctly on target_widget
         parent_frame_ref = target_widget.parent_frame_ref 
         thumb_widget_frame_ref = target_widget.thumb_widget_frame_ref
 
         context_menu = Menu(self, tearoff=0)
         context_menu.add_command(label="Open Image", 
                                  command=lambda p=original_path: self.open_image_with_default_viewer(p))
+        
+        # --- ADD "OPEN CONTAINING FOLDER" ---
+        containing_folder = os.path.dirname(original_path)
+        context_menu.add_command(label="Open Containing Folder",
+                                 command=lambda d=containing_folder: self.open_image_with_default_viewer(d)) # Re-use for opening directory
+        # --- END OF ADDITION ---
+
+        context_menu.add_separator() # Keep separator before destructive actions
         context_menu.add_command(label="Remove from List", 
                                  command=lambda k=display_key, pf=parent_frame_ref, tf=thumb_widget_frame_ref: self.remove_input_item(k, pf, tf))
-        context_menu.add_separator()
         context_menu.add_command(label="Delete from Disk...", 
                                  command=lambda k=display_key, p=original_path, pf=parent_frame_ref, tf=thumb_widget_frame_ref: self.delete_file_from_disk(k, p, pf, tf))
         
@@ -640,15 +660,15 @@ class App(TkinterDnD.Tk):
         self.add_files_button.configure(state="disabled")
         self.add_directory_button.configure(state="disabled")
         self.refresh_inputs_button.configure(state="disabled")
-        for scroll_frame in [self.input_photos_scrollable_frame, self.input_anime_scrollable_frame]:
-            for thumb_frame_widget in scroll_frame.winfo_children(): # Iterate over the CTkFrames we packed
-                if isinstance(thumb_frame_widget, ctk.CTkFrame):
-                    for widget in thumb_frame_widget.winfo_children():
-                        if isinstance(widget, ctk.CTkButton) and widget.cget("text") == "X":
-                            widget.configure(state="disabled")
-                        # Disable context menu on labels during processing
-                        if isinstance(widget, ctk.CTkLabel):
-                            widget.unbind("<Button-3>")
+        # for scroll_frame in [self.input_photos_scrollable_frame, self.input_anime_scrollable_frame]:
+            # for thumb_frame_widget in scroll_frame.winfo_children(): # Iterate over the CTkFrames we packed
+                # if isinstance(thumb_frame_widget, ctk.CTkFrame):
+                    # for widget in thumb_frame_widget.winfo_children():
+                        # if isinstance(widget, ctk.CTkButton) and widget.cget("text") == "X":
+                            # widget.configure(state="disabled")
+                        # # Disable context menu on labels during processing
+                        # if isinstance(widget, ctk.CTkLabel):
+                            # widget.unbind("<Button-3>")
 
 
         self.upscale_slider.configure(state="disabled")
@@ -733,22 +753,22 @@ class App(TkinterDnD.Tk):
         self.refresh_inputs_button.configure(state="normal")
         
         # Re-enable remove buttons and context menus on input thumbnails
-        for scroll_frame in [self.input_photos_scrollable_frame, self.input_anime_scrollable_frame]:
-            for thumb_frame_widget in scroll_frame.winfo_children(): # These are the CTkFrames we packed
-                if isinstance(thumb_frame_widget, ctk.CTkFrame): # Our specific container for label + button
-                    found_label_in_thumb_frame = False
-                    for widget_in_thumb in thumb_frame_widget.winfo_children():
-                        if isinstance(widget_in_thumb, ctk.CTkButton) and widget_in_thumb.cget("text") == "X":
-                            widget_in_thumb.configure(state="normal")
-                        # Find the CTkLabel that has our custom attributes (original_path etc.)
-                        # and re-bind the context menu to it.
-                        elif isinstance(widget_in_thumb, ctk.CTkLabel) and hasattr(widget_in_thumb, 'original_path'):
-                            # Make sure we are rebinding to the correct label instance
-                            # The lambda will capture the current 'widget_in_thumb' (our ctk_label_widget)
-                            widget_in_thumb.bind("<Button-3>", lambda event, lbl=widget_in_thumb: self.show_input_context_menu(event, custom_widget=lbl))
-                            found_label_in_thumb_frame = True
-                    # if not found_label_in_thumb_frame:
-                        # print(f"DEBUG: finish_processing - No interactive CTkLabel found in thumb_frame: {thumb_frame_widget}")
+        # for scroll_frame in [self.input_photos_scrollable_frame, self.input_anime_scrollable_frame]:
+            # for thumb_frame_widget in scroll_frame.winfo_children(): # These are the CTkFrames we packed
+                # if isinstance(thumb_frame_widget, ctk.CTkFrame): # Our specific container for label + button
+                    # found_label_in_thumb_frame = False
+                    # for widget_in_thumb in thumb_frame_widget.winfo_children():
+                        # if isinstance(widget_in_thumb, ctk.CTkButton) and widget_in_thumb.cget("text") == "X":
+                            # widget_in_thumb.configure(state="normal")
+                        # # Find the CTkLabel that has our custom attributes (original_path etc.)
+                        # # and re-bind the context menu to it.
+                        # elif isinstance(widget_in_thumb, ctk.CTkLabel) and hasattr(widget_in_thumb, 'original_path'):
+                            # # Make sure we are rebinding to the correct label instance
+                            # # The lambda will capture the current 'widget_in_thumb' (our ctk_label_widget)
+                            # widget_in_thumb.bind("<Button-3>", lambda event, lbl=widget_in_thumb: self.show_input_context_menu(event, custom_widget=lbl))
+                            # found_label_in_thumb_frame = True
+                    # # if not found_label_in_thumb_frame:
+                        # # print(f"DEBUG: finish_processing - No interactive CTkLabel found in thumb_frame: {thumb_frame_widget}")
 
 
         self.upscale_slider.configure(state="normal")
